@@ -16,6 +16,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -36,9 +37,11 @@ class DeviceCompanionService : Service(), WebRtcScreenManager.SignalingCallback 
     private val fileManager by lazy { FileTransferManager(this) }
     private var pendingFileName: String? = null
     private var lastProjectionIntent: Intent? = null
+    private var isStreamingActive = false
 
     private val client = OkHttpClient.Builder()
         .readTimeout(0, TimeUnit.MILLISECONDS)
+        .connectTimeout(5, TimeUnit.SECONDS)
         .build()
 
     companion object {
@@ -68,10 +71,12 @@ class DeviceCompanionService : Service(), WebRtcScreenManager.SignalingCallback 
                 val data = intent.getParcelableExtra<Intent>(EXTRA_DATA)
                 if (resultCode != -1 && data != null) {
                     lastProjectionIntent = data
+                    isStreamingActive = true
                     startScreenStream(resultCode, data)
                 }
             }
             ACTION_STOP_STREAM -> {
+                isStreamingActive = false
                 webRtcManager?.stop()
                 webRtcManager = null
                 startInitialForeground("Connected to PC: 10.215.92.1")
@@ -123,30 +128,47 @@ class DeviceCompanionService : Service(), WebRtcScreenManager.SignalingCallback 
                 .build()
 
             webSocket = client.newWebSocket(request, object : WebSocketListener() {
-                override fun onOpen(webSocket: WebSocket, response: Response) {
+                override fun onOpen(ws: WebSocket, response: Response) {
+                    webSocket = ws
                     val registerMsg = JSONObject().apply {
                         put("role", "phone")
                     }
-                    webSocket.send(registerMsg.toString())
+                    ws.send(registerMsg.toString())
                     updateNotification("Connected to PC")
+
+                    // If user already tapped Start Streaming, send offer immediately on connect
+                    if (isStreamingActive && lastProjectionIntent != null) {
+                        webRtcManager?.createOffer()
+                    }
                 }
 
-                override fun onMessage(webSocket: WebSocket, text: String) {
+                override fun onMessage(ws: WebSocket, text: String) {
                     handleRemoteMessage(text)
                 }
 
-                override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
+                override fun onMessage(ws: WebSocket, bytes: ByteString) {
                     pendingFileName?.let {
                         fileManager.handleIncomingChunk(bytes.toByteArray(), it)
                     }
                 }
 
-                override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                    updateNotification("Connecting to PC (10.215.92.1)...")
+                override fun onFailure(ws: WebSocket, t: Throwable, response: Response?) {
+                    webSocket = null
+                    updateNotification("Connecting to PC (Retrying in 3s)...")
+                    // Automatic Reconnect Loop
+                    serviceScope.launch {
+                        delay(3000)
+                        connectToDesktop()
+                    }
                 }
 
-                override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                    updateNotification("Disconnected")
+                override fun onClosed(ws: WebSocket, code: Int, reason: String) {
+                    webSocket = null
+                    updateNotification("Disconnected. Reconnecting...")
+                    serviceScope.launch {
+                        delay(3000)
+                        connectToDesktop()
+                    }
                 }
             })
         }
