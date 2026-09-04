@@ -37,7 +37,7 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     // WebRTC (Official Google build)
-    implementation("com.google.webrtc:google-webrtc:1.0.32006")
+    implementation("io.getstream:stream-webrtc-android:1.1.4")
 
     // Lifecycle
     implementation("androidx.lifecycle:lifecycle-service:2.7.0")
