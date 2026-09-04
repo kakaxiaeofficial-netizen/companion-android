@@ -76,7 +76,13 @@ class DeviceCompanionService : Service(), WebRtcScreenManager.SignalingCallback 
             }
             ACTION_START_STREAM -> {
                 val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, -1)
-                val data = intent.getParcelableExtra<Intent>(EXTRA_DATA)
+                val data: Intent? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    intent.getParcelableExtra(EXTRA_DATA, Intent::class.java)
+                } else {
+                    @Suppress("DEPRECATION")
+                    intent.getParcelableExtra(EXTRA_DATA)
+                }
+
                 if (resultCode != -1 && data != null) {
                     lastProjectionIntent = data
                     isStreamingActive = true
@@ -184,6 +190,11 @@ class DeviceCompanionService : Service(), WebRtcScreenManager.SignalingCallback 
         try {
             val json = JSONObject(message)
             when (json.optString("type")) {
+                "request_offer" -> {
+                    if (isStreamingActive && lastProjectionIntent != null) {
+                        webRtcManager?.createOffer()
+                    }
+                }
                 "answer" -> {
                     val sdp = SessionDescription(SessionDescription.Type.ANSWER, json.getString("sdp"))
                     webRtcManager?.handleAnswer(sdp)
