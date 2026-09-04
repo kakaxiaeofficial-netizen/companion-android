@@ -38,6 +38,7 @@ class DeviceCompanionService : Service(), WebRtcScreenManager.SignalingCallback 
     private var pendingFileName: String? = null
     private var lastProjectionIntent: Intent? = null
     private var isStreamingActive = false
+    private var serverIp: String = "10.97.225.1"
 
     private val client = OkHttpClient.Builder()
         .readTimeout(0, TimeUnit.MILLISECONDS)
@@ -61,6 +62,13 @@ class DeviceCompanionService : Service(), WebRtcScreenManager.SignalingCallback 
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val newIp = intent?.getStringExtra("EXTRA_SERVER_IP")
+        if (!newIp.isNullOrEmpty() && newIp != serverIp) {
+            serverIp = newIp
+            webSocket?.close(1000, "IP Changed")
+            webSocket = null
+        }
+
         when (intent?.action) {
             ACTION_DISCONNECT -> {
                 stopSelf()
@@ -79,7 +87,7 @@ class DeviceCompanionService : Service(), WebRtcScreenManager.SignalingCallback 
                 isStreamingActive = false
                 webRtcManager?.stop()
                 webRtcManager = null
-                startInitialForeground("Connected to PC: 10.215.92.1")
+                startInitialForeground("Connected to PC ($serverIp)")
             }
             ACTION_FORWARD_NOTIFICATION -> {
                 val data = intent.getStringExtra("data")
@@ -88,7 +96,7 @@ class DeviceCompanionService : Service(), WebRtcScreenManager.SignalingCallback 
                 }
             }
             else -> {
-                startInitialForeground("Connecting to PC: 10.215.92.1...")
+                startInitialForeground("Connecting to PC ($serverIp)...")
             }
         }
 
@@ -114,7 +122,7 @@ class DeviceCompanionService : Service(), WebRtcScreenManager.SignalingCallback 
         } else {
             0
         }
-        startForeground(NOTIFICATION_ID, createNotification("Streaming Screen to PC"), serviceType)
+        startForeground(NOTIFICATION_ID, createNotification("Streaming Screen to PC ($serverIp)"), serviceType)
 
         webRtcManager = WebRtcScreenManager(this, this)
         webRtcManager?.startScreenCapture(resultCode, data)
@@ -124,7 +132,7 @@ class DeviceCompanionService : Service(), WebRtcScreenManager.SignalingCallback 
     private fun connectToDesktop() {
         serviceScope.launch {
             val request = Request.Builder()
-                .url("ws://10.215.92.1:8080")
+                .url("ws://$serverIp:8080")
                 .build()
 
             webSocket = client.newWebSocket(request, object : WebSocketListener() {
@@ -134,9 +142,8 @@ class DeviceCompanionService : Service(), WebRtcScreenManager.SignalingCallback 
                         put("role", "phone")
                     }
                     ws.send(registerMsg.toString())
-                    updateNotification("Connected to PC")
+                    updateNotification("Connected to PC ($serverIp)")
 
-                    // If user already tapped Start Streaming, send offer immediately on connect
                     if (isStreamingActive && lastProjectionIntent != null) {
                         webRtcManager?.createOffer()
                     }
@@ -154,8 +161,7 @@ class DeviceCompanionService : Service(), WebRtcScreenManager.SignalingCallback 
 
                 override fun onFailure(ws: WebSocket, t: Throwable, response: Response?) {
                     webSocket = null
-                    updateNotification("Connecting to PC (Retrying in 3s)...")
-                    // Automatic Reconnect Loop
+                    updateNotification("Connecting to PC ($serverIp)...")
                     serviceScope.launch {
                         delay(3000)
                         connectToDesktop()
