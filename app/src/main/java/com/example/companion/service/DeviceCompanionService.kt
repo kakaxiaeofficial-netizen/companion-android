@@ -46,6 +46,7 @@ class DeviceCompanionService : Service(), WebRtcScreenManager.SignalingCallback 
         const val NOTIFICATION_ID = 1
         const val ACTION_DISCONNECT = "ACTION_DISCONNECT"
         const val ACTION_START_STREAM = "ACTION_START_STREAM"
+        const val ACTION_STOP_STREAM = "ACTION_STOP_STREAM"
         const val ACTION_FORWARD_NOTIFICATION = "ACTION_FORWARD_NOTIFICATION"
         const val EXTRA_RESULT_CODE = "EXTRA_RESULT_CODE"
         const val EXTRA_DATA = "EXTRA_DATA"
@@ -67,8 +68,13 @@ class DeviceCompanionService : Service(), WebRtcScreenManager.SignalingCallback 
                 val data = intent.getParcelableExtra<Intent>(EXTRA_DATA)
                 if (resultCode != -1 && data != null) {
                     lastProjectionIntent = data
-                    startWebRtc(resultCode, data)
+                    startScreenStream(resultCode, data)
                 }
+            }
+            ACTION_STOP_STREAM -> {
+                webRtcManager?.stop()
+                webRtcManager = null
+                startInitialForeground("Connected to PC: 10.215.92.1")
             }
             ACTION_FORWARD_NOTIFICATION -> {
                 val data = intent.getStringExtra("data")
@@ -76,27 +82,38 @@ class DeviceCompanionService : Service(), WebRtcScreenManager.SignalingCallback 
                     webSocket?.send(data)
                 }
             }
+            else -> {
+                startInitialForeground("Connecting to PC: 10.215.92.1...")
+            }
         }
-
-        val serviceType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION or
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC or
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
-        } else {
-            0
-        }
-
-        startForeground(
-            NOTIFICATION_ID,
-            createNotification("Connected to Companion Server"),
-            serviceType
-        )
 
         if (webSocket == null) {
             connectToDesktop()
         }
 
         return START_STICKY
+    }
+
+    private fun startInitialForeground(statusText: String) {
+        val serviceType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+        } else {
+            0
+        }
+        startForeground(NOTIFICATION_ID, createNotification(statusText), serviceType)
+    }
+
+    private fun startScreenStream(resultCode: Int, data: Intent) {
+        val serviceType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC or ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+        } else {
+            0
+        }
+        startForeground(NOTIFICATION_ID, createNotification("Streaming Screen to PC"), serviceType)
+
+        webRtcManager = WebRtcScreenManager(this, this)
+        webRtcManager?.startScreenCapture(resultCode, data)
+        webRtcManager?.createOffer()
     }
 
     private fun connectToDesktop() {
@@ -125,7 +142,7 @@ class DeviceCompanionService : Service(), WebRtcScreenManager.SignalingCallback 
                 }
 
                 override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                    updateNotification("Connection Failed. Retrying...")
+                    updateNotification("Connecting to PC (10.215.92.1)...")
                 }
 
                 override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
@@ -180,12 +197,6 @@ class DeviceCompanionService : Service(), WebRtcScreenManager.SignalingCallback 
         }
     }
 
-    private fun startWebRtc(resultCode: Int, data: Intent) {
-        webRtcManager = WebRtcScreenManager(this, this)
-        webRtcManager?.startScreenCapture(resultCode, data)
-        webRtcManager?.createOffer()
-    }
-
     override fun onLocalDescription(sdp: SessionDescription) {
         val json = JSONObject().apply {
             put("role", "phone")
@@ -225,7 +236,7 @@ class DeviceCompanionService : Service(), WebRtcScreenManager.SignalingCallback 
 
     private fun updateNotification(text: String) {
         val notificationManager = getSystemService(NotificationManager::class.java)
-        notificationManager.notify(NOTIFICATION_ID, createNotification(text))
+        notificationManager?.notify(NOTIFICATION_ID, createNotification(text))
     }
 
     private fun createNotificationChannel() {
@@ -233,7 +244,7 @@ class DeviceCompanionService : Service(), WebRtcScreenManager.SignalingCallback 
             CHANNEL_ID, "Device Companion Service",
             NotificationManager.IMPORTANCE_LOW
         )
-        getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+        getSystemService(NotificationManager::class.java)?.createNotificationChannel(channel)
     }
 
     override fun onDestroy() {
