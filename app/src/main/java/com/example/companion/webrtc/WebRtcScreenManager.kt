@@ -65,15 +65,16 @@ class WebRtcScreenManager(
             override fun onIceCandidate(candidate: IceCandidate) {
                 signalingClient.onIceCandidate(candidate)
             }
-            override fun onSignalingChange(p0: PeerConnection.SignalingState?) {}
-            override fun onIceConnectionChange(p0: PeerConnection.IceConnectionState?) {}
-            override fun onIceConnectionReceivingChange(p0: Boolean) {}
-            override fun onIceGatheringChange(p0: PeerConnection.IceGatheringState?) {}
-            override fun onAddStream(p0: MediaStream?) {}
-            override fun onRemoveStream(p0: MediaStream?) {}
-            override fun onDataChannel(p0: DataChannel?) {}
+            override fun onIceCandidatesRemoved(candidates: Array<out IceCandidate>) {}
+            override fun onSignalingChange(state: PeerConnection.SignalingState) {}
+            override fun onIceConnectionChange(state: PeerConnection.IceConnectionState) {}
+            override fun onIceConnectionReceivingChange(receiving: Boolean) {}
+            override fun onIceGatheringChange(state: PeerConnection.IceGatheringState) {}
+            override fun onAddStream(stream: MediaStream) {}
+            override fun onRemoveStream(stream: MediaStream) {}
+            override fun onDataChannel(channel: DataChannel) {}
             override fun onRenegotiationNeeded() {}
-            override fun onAddTrack(p0: RtpReceiver?, p1: Array<out MediaStream>?) {}
+            override fun onAddTrack(receiver: RtpReceiver, streams: Array<out MediaStream>) {}
         })
 
         videoTrack?.let {
@@ -84,9 +85,9 @@ class WebRtcScreenManager(
     fun createOffer() {
         val constraints = MediaConstraints()
         peerConnection?.createOffer(object : SdpObserverAdapter() {
-            override fun onCreateSuccess(sdp: SessionDescription) {
-                peerConnection?.setLocalDescription(SdpObserverAdapter(), sdp)
-                signalingClient.onLocalDescription(sdp)
+            override fun onCreateSuccess(desc: SessionDescription) {
+                peerConnection?.setLocalDescription(SdpObserverAdapter(), desc)
+                signalingClient.onLocalDescription(desc)
             }
         }, constraints)
     }
@@ -151,9 +152,9 @@ class WebRtcScreenManager(
     }
 
     open class SdpObserverAdapter : SdpObserver {
-        override fun onCreateSuccess(p0: SessionDescription?) {}
+        override fun onCreateSuccess(desc: SessionDescription) {}
         override fun onSetSuccess() {}
-        override fun onCreateFailure(p0: String?) {}
-        override fun onSetFailure(p0: String?) {}
+        override fun onCreateFailure(error: String) {}
+        override fun onSetFailure(error: String) {}
     }
 }
