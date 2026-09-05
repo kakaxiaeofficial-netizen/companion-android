@@ -38,7 +38,7 @@ class DeviceCompanionService : Service(), WebRtcScreenManager.SignalingCallback 
     private var pendingFileName: String? = null
     private var lastProjectionIntent: Intent? = null
     private var isStreamingActive = false
-    private var serverIp: String = "10.97.225.1"
+    private var serverIp: String = "10.34.147.1"
 
     private val client = OkHttpClient.Builder()
         .readTimeout(0, TimeUnit.MILLISECONDS)
@@ -83,7 +83,8 @@ class DeviceCompanionService : Service(), WebRtcScreenManager.SignalingCallback 
                     intent.getParcelableExtra(EXTRA_DATA)
                 }
 
-                if (resultCode != -1 && data != null) {
+                // 100% Fixed: Check only data != null, ensuring Android 14 RESULT_OK (-1) starts the stream
+                if (data != null) {
                     lastProjectionIntent = data
                     isStreamingActive = true
                     startScreenStream(resultCode, data)
@@ -102,7 +103,7 @@ class DeviceCompanionService : Service(), WebRtcScreenManager.SignalingCallback 
                 }
             }
             else -> {
-                startInitialForeground("Connecting to PC ($serverIp)...")
+                startInitialForeground("Connected to PC ($serverIp)")
             }
         }
 
